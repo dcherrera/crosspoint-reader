@@ -61,49 +61,89 @@ void reverseIfRtl(std::string& word) {
 
   if (!hasRtl || count <= 1) return;
 
-  // Reverse the codepoints array
-  std::reverse(codepoints, codepoints + count);
+  // Reverse grapheme clusters (base char + combining marks as a unit).
+  // A naive codepoint-level reverse would detach Hebrew nikkud/cantillation
+  // marks from their base letters.
 
-  // Mirror brackets after reversal (only check ASCII range 0x28-0x7D)
+  // Step 1: identify cluster boundaries. A cluster starts at each non-combining codepoint.
+  // clusterStart[i] = index of the first codepoint in the cluster that codepoint i belongs to.
+  size_t clusterStart[64];
+  size_t currentCluster = 0;
   for (size_t i = 0; i < count; i++) {
-    const uint32_t cp = codepoints[i];
-    if (cp >= 0x28 && cp <= 0x7D) {  // Fast range check covers all ASCII brackets
+    if (i > 0 && utf8IsCombiningMark(codepoints[i])) {
+      clusterStart[i] = currentCluster;
+    } else {
+      currentCluster = i;
+      clusterStart[i] = i;
+    }
+  }
+
+  // Step 2: collect cluster ranges (start, length)
+  struct Cluster {
+    size_t start;
+    size_t len;
+  };
+  Cluster clusters[64];
+  size_t clusterCount = 0;
+  size_t i = 0;
+  while (i < count) {
+    size_t start = i;
+    i++;
+    while (i < count && utf8IsCombiningMark(codepoints[i])) i++;
+    clusters[clusterCount++] = {start, i - start};
+  }
+
+  // Step 3: build reversed output by iterating clusters in reverse order
+  uint32_t reversed[64];
+  size_t revIdx = 0;
+  for (size_t c = clusterCount; c-- > 0;) {
+    // Copy cluster codepoints in original order (preserves base + marks)
+    for (size_t j = 0; j < clusters[c].len; j++) {
+      reversed[revIdx] = codepoints[clusters[c].start + j];
+      revIdx++;
+    }
+  }
+
+  // Step 4: mirror brackets after reversal (only check ASCII range 0x28-0x7D)
+  for (size_t idx = 0; idx < revIdx; idx++) {
+    const uint32_t cp = reversed[idx];
+    if (cp >= 0x28 && cp <= 0x7D) {
       switch (cp) {
         case '(':
-          codepoints[i] = ')';
+          reversed[idx] = ')';
           break;
         case ')':
-          codepoints[i] = '(';
+          reversed[idx] = '(';
           break;
         case '[':
-          codepoints[i] = ']';
+          reversed[idx] = ']';
           break;
         case ']':
-          codepoints[i] = '[';
+          reversed[idx] = '[';
           break;
         case '{':
-          codepoints[i] = '}';
+          reversed[idx] = '}';
           break;
         case '}':
-          codepoints[i] = '{';
+          reversed[idx] = '{';
           break;
         case '<':
-          codepoints[i] = '>';
+          reversed[idx] = '>';
           break;
         case '>':
-          codepoints[i] = '<';
+          reversed[idx] = '<';
           break;
       }
     }
   }
 
   // Re-encode to UTF-8
-  std::string reversed;
-  reversed.reserve(word.size());
-  for (size_t i = 0; i < count; i++) {
-    utf8Encode(codepoints[i], reversed);
+  std::string result;
+  result.reserve(word.size());
+  for (size_t idx = 0; idx < revIdx; idx++) {
+    utf8Encode(reversed[idx], result);
   }
-  word = std::move(reversed);
+  word = std::move(result);
 }
 
 }  // namespace ScriptDetector
