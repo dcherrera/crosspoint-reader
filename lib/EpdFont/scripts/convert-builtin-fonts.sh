@@ -57,8 +57,10 @@ for size in ${UI_FONT_SIZES[@]}; do
   for style in ${UI_FONT_STYLES[@]}; do
     font_name="ubuntu_${size}_$(echo $style | tr '[:upper:]' '[:lower:]')"
     font_path="../builtinFonts/source/Ubuntu/Ubuntu-${style}.ttf"
+    hebrew_path="../builtinFonts/source/NotoSansHebrew/NotoSansHebrew-$(hebrew_weight $style).ttf"
     output_path="../builtinFonts/${font_name}.h"
-    python fontconvert.py $font_name $size $font_path > $output_path
+    python fontconvert.py $font_name $size $font_path $hebrew_path \
+      --additional-intervals 0x0590,0x05FF > $output_path
     echo "Generated $output_path"
   done
 done
