@@ -136,6 +136,12 @@ class GfxRenderer {
   std::vector<std::string> wrappedText(int fontId, const char* text, int maxWidth, int maxLines,
                                        EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
 
+  // BiDi-aware text drawing: reorders text into visual order before rendering.
+  // For LTR text, behaves identically to drawText. For RTL or mixed text,
+  // applies simplified Unicode Bidi Algorithm for correct visual display.
+  void drawTextBidi(int fontId, int x, int y, const char* text, bool black = true,
+                    EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
+
   // Helper for drawing rotated text (90 degrees clockwise, for side buttons)
   void drawTextRotated90CW(int fontId, int x, int y, const char* text, bool black = true,
                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;

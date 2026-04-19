@@ -1,5 +1,7 @@
 #include "GfxRenderer.h"
 
+#include <BidiClassifier.h>
+#include <BidiReorder.h>
 #include <FontDecompressor.h>
 #include <HalGPIO.h>
 #include <Logging.h>
@@ -271,6 +273,34 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
     renderCharImpl<TextRotation::None>(*this, renderMode, font, cp, lastBaseX, yPos, black, style);
     prevCp = cp;
   }
+}
+
+void GfxRenderer::drawTextBidi(const int fontId, const int x, const int y, const char* text, const bool black,
+                               const EpdFontFamily::Style style) const {
+  if (!text || *text == '\0') return;
+
+  // Fast path: if text has no RTL characters, skip BiDi processing entirely
+  auto paragraphDir = Bidi::detectParagraphDirection(text);
+  if (paragraphDir == Bidi::BaseDir::LTR) {
+    // Quick scan: any RTL chars at all?
+    const auto* p = reinterpret_cast<const uint8_t*>(text);
+    uint32_t cp;
+    bool hasRTL = false;
+    while ((cp = utf8NextCodepoint(&p))) {
+      if (Bidi::classifyCodepoint(cp) == Bidi::CharDir::RTL) {
+        hasRTL = true;
+        break;
+      }
+    }
+    if (!hasRTL) {
+      drawText(fontId, x, y, text, black, style);
+      return;
+    }
+  }
+
+  // Apply BiDi reordering and draw the visual-order string
+  std::string visual = Bidi::toVisualOrder(text, paragraphDir);
+  drawText(fontId, x, y, visual.c_str(), black, style);
 }
 
 void GfxRenderer::drawLine(int x1, int y1, int x2, int y2, const bool state) const {
