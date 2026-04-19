@@ -1,5 +1,6 @@
 #include "ParsedText.h"
 
+#include <BidiClassifier.h>
 #include <GfxRenderer.h>
 #include <Utf8.h>
 
@@ -486,10 +487,21 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
                                ? spareSpace / static_cast<int>(actualGapCount)
                                : 0;
 
+  // Detect if this line is predominantly RTL for alignment purposes
+  bool lineIsRTL = false;
+  for (size_t wordIdx = 0; wordIdx < lineWordCount; wordIdx++) {
+    auto dir = Bidi::detectParagraphDirection(words[lastBreakAt + wordIdx].c_str());
+    if (dir == Bidi::BaseDir::RTL) {
+      lineIsRTL = true;
+      break;
+    }
+  }
+
   // Calculate initial x position (first line starts at indent for left/justified text;
   // may be negative for hanging indents, e.g. margin-left:3em; text-indent:-1em).
   auto xpos = static_cast<int16_t>(firstLineIndent);
-  if (blockStyle.alignment == CssTextAlign::Right) {
+  if (blockStyle.alignment == CssTextAlign::Right || (lineIsRTL && !blockStyle.textAlignDefined)) {
+    // Right-align explicitly, or auto-right-align for RTL text without explicit alignment
     xpos = effectivePageWidth - lineWordWidthSum - totalNaturalGaps;
   } else if (blockStyle.alignment == CssTextAlign::Center) {
     xpos = (effectivePageWidth - lineWordWidthSum - totalNaturalGaps) / 2;
@@ -533,6 +545,30 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
   for (auto& word : lineWords) {
     if (containsSoftHyphen(word)) {
       stripSoftHyphensInPlace(word);
+    }
+  }
+
+  // RTL support: detect paragraph direction from word content and reverse
+  // word order + mirror x-positions for right-to-left text.
+  // Each word's internal character order is handled by drawTextBidi at render time.
+  if (!lineWords.empty()) {
+    // Check if line content is predominantly RTL
+    bool isRTL = false;
+    for (const auto& word : lineWords) {
+      auto dir = Bidi::detectParagraphDirection(word.c_str());
+      if (dir == Bidi::BaseDir::RTL) {
+        isRTL = true;
+        break;
+      }
+    }
+
+    if (isRTL) {
+      // Reverse word order and mirror x-positions
+      // Current positions are LTR: word0 at x0, word1 at x1, ...
+      // For RTL: last word should be leftmost, first word rightmost
+      std::reverse(lineWords.begin(), lineWords.end());
+      std::reverse(lineWordStyles.begin(), lineWordStyles.end());
+      std::reverse(lineXPos.begin(), lineXPos.end());
     }
   }
 
