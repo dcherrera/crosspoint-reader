@@ -1,5 +1,6 @@
 #include "MdReaderActivity.h"
 
+#include <BidiClassifier.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -453,33 +454,52 @@ void MdReaderActivity::renderPage() {
     int y = cachedOrientedMarginTop;
     for (const auto& line : currentPageLines) {
       if (line.isHR) {
-        // Draw horizontal rule as a thin line
         int hrY = y + lineHeight / 2;
         renderer.drawLine(cachedOrientedMarginLeft + line.indent, hrY, cachedOrientedMarginLeft + viewportWidth, hrY);
       } else if (!line.spans.empty()) {
-        int x = cachedOrientedMarginLeft + line.indent;
-
-        // Apply text alignment for non-indented lines
-        if (line.indent == 0) {
-          int contentWidth = viewportWidth;
-          switch (cachedParagraphAlignment) {
-            case CrossPointSettings::CENTER_ALIGN: {
-              x = cachedOrientedMarginLeft + (contentWidth - measureSpans(line.spans)) / 2;
+        // Detect line direction from span content
+        bool isRTL = false;
+        for (const auto& span : line.spans) {
+          if (!span.text.empty()) {
+            auto dir = Bidi::detectParagraphDirection(span.text.c_str());
+            if (dir == Bidi::BaseDir::RTL) {
+              isRTL = true;
               break;
             }
-            case CrossPointSettings::RIGHT_ALIGN: {
-              x = cachedOrientedMarginLeft + contentWidth - measureSpans(line.spans);
-              break;
-            }
-            default:
-              break;
           }
         }
 
-        // Render each span
+        int spansTotalWidth = measureSpans(line.spans);
+        int x;
+
+        if (isRTL) {
+          // RTL: right-align, indent from right edge
+          x = cachedOrientedMarginLeft + viewportWidth - spansTotalWidth - line.indent;
+        } else {
+          x = cachedOrientedMarginLeft + line.indent;
+
+          // Apply text alignment for non-indented LTR lines
+          if (line.indent == 0) {
+            int contentWidth = viewportWidth;
+            switch (cachedParagraphAlignment) {
+              case CrossPointSettings::CENTER_ALIGN: {
+                x = cachedOrientedMarginLeft + (contentWidth - spansTotalWidth) / 2;
+                break;
+              }
+              case CrossPointSettings::RIGHT_ALIGN: {
+                x = cachedOrientedMarginLeft + contentWidth - spansTotalWidth;
+                break;
+              }
+              default:
+                break;
+            }
+          }
+        }
+
+        // Render each span with BiDi support
         for (const auto& span : line.spans) {
           if (!span.text.empty()) {
-            renderer.drawText(cachedFontId, x, y, span.text.c_str(), true, span.style);
+            renderer.drawTextBidi(cachedFontId, x, y, span.text.c_str(), true, span.style);
             x += renderer.getTextAdvanceX(cachedFontId, span.text.c_str(), span.style);
           }
         }

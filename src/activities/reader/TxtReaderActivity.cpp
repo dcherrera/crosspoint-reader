@@ -1,5 +1,6 @@
 #include "TxtReaderActivity.h"
 
+#include <BidiClassifier.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -334,18 +335,26 @@ void TxtReaderActivity::renderPage() {
   const int lineHeight = renderer.getLineHeight(cachedFontId);
   const int contentWidth = viewportWidth;
 
-  // Render text lines with alignment
+  // Render text lines with alignment (BiDi-aware)
   auto renderLines = [&]() {
     int y = cachedOrientedMarginTop;
     for (const auto& line : currentPageLines) {
       if (!line.empty()) {
         int x = cachedOrientedMarginLeft;
 
+        // Detect line direction for auto-alignment
+        auto lineDir = Bidi::detectParagraphDirection(line.c_str());
+        bool isRTL = (lineDir == Bidi::BaseDir::RTL);
+
         // Apply text alignment
         switch (cachedParagraphAlignment) {
           case CrossPointSettings::LEFT_ALIGN:
           default:
-            // x already set to left margin
+            if (isRTL) {
+              // Auto right-align RTL lines when user has left-align (default)
+              int textWidth = renderer.getTextWidth(cachedFontId, line.c_str());
+              x = cachedOrientedMarginLeft + contentWidth - textWidth;
+            }
             break;
           case CrossPointSettings::CENTER_ALIGN: {
             int textWidth = renderer.getTextWidth(cachedFontId, line.c_str());
@@ -358,12 +367,14 @@ void TxtReaderActivity::renderPage() {
             break;
           }
           case CrossPointSettings::JUSTIFIED:
-            // For plain text, justified is treated as left-aligned
-            // (true justification would require word spacing adjustments)
+            if (isRTL) {
+              int textWidth = renderer.getTextWidth(cachedFontId, line.c_str());
+              x = cachedOrientedMarginLeft + contentWidth - textWidth;
+            }
             break;
         }
 
-        renderer.drawText(cachedFontId, x, y, line.c_str());
+        renderer.drawTextBidi(cachedFontId, x, y, line.c_str());
       }
       y += lineHeight;
     }

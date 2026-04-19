@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Utf8.h>
+
 #include <cstdint>
 
 namespace Bidi {
@@ -59,8 +61,6 @@ inline BaseDir detectParagraphDirection(const char* text) {
   if (!text) return BaseDir::LTR;
   const auto* p = reinterpret_cast<const uint8_t*>(text);
   uint32_t cp;
-  // Forward declaration — defined in Utf8.h
-  extern uint32_t utf8NextCodepoint(const unsigned char** string);
   while ((cp = utf8NextCodepoint(&p))) {
     CharDir dir = classifyCodepoint(cp);
     if (dir == CharDir::RTL) return BaseDir::RTL;
